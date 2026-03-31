@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zadar Public Tender Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore-compat.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+
+    .header { background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%); padding: 24px 32px; border-bottom: 1px solid #1e293b; }
+    .header h1 { font-size: 24px; font-weight: 700; color: #f8fafc; }
+    .header h1 span { color: #38bdf8; }
+    .header p { color: #94a3b8; font-size: 14px; margin-top: 4px; }
+
+    .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 20px 32px; background: #1e293b; border-bottom: 1px solid #334155; }
+    .controls label { font-size: 13px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .controls input[type="date"], .controls input[type="text"] {
+      padding: 8px 12px; border: 1px solid #475569; border-radius: 6px; font-size: 14px;
+      background: #0f172a; color: #e2e8f0; outline: none;
+    }
+    .controls input:focus { border-color: #38bdf8; }
+    .controls button {
+      padding: 8px 28px; background: #0ea5e9; color: #fff; border: none; border-radius: 6px;
+      font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s;
+    }
+    .controls button:hover { background: #0284c7; }
+    .controls button:disabled { background: #475569; cursor: not-allowed; }
+
+    .main { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+
+    #status { text-align: center; padding: 16px; color: #94a3b8; font-size: 14px; }
+    #status .error { color: #f87171; }
+
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .card {
+      background: #1e293b; border-radius: 10px; padding: 20px; border: 1px solid #334155;
+    }
+    .card .label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-bottom: 8px; }
+    .card .value { font-size: 28px; font-weight: 700; color: #f8fafc; }
+    .card .value.accent { color: #38bdf8; }
+    .card .sub { font-size: 12px; color: #64748b; margin-top: 4px; }
+
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+    .chart-box {
+      background: #1e293b; border-radius: 10px; padding: 20px; border: 1px solid #334155;
+    }
+    .chart-box h3 { font-size: 14px; color: #94a3b8; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .table-container {
+      background: #1e293b; border-radius: 10px; border: 1px solid #334155; overflow: hidden;
+    }
+    .table-header { padding: 16px 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+    .table-header h3 { font-size: 14px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #0f172a; color: #94a3b8; padding: 10px 16px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; position: sticky; top: 0; }
+    td { padding: 12px 16px; border-bottom: 1px solid #1e293b; font-size: 14px; }
+    tr:hover td { background: #334155; }
+    .text-right { text-align: right; }
+    .rank { color: #64748b; font-weight: 600; width: 40px; }
+    .company-name { font-weight: 600; color: #f8fafc; }
+    .company-city { font-size: 12px; color: #64748b; }
+    .amount { font-variant-numeric: tabular-nums; color: #34d399; font-weight: 600; }
+    .count { color: #38bdf8; font-weight: 600; }
+    .expand-btn { background: none; border: 1px solid #475569; color: #94a3b8; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
+    .expand-btn:hover { border-color: #38bdf8; color: #38bdf8; }
+    .tender-details { background: #0f172a; }
+    .tender-details td { padding: 8px 16px 8px 56px; font-size: 13px; color: #94a3b8; border-bottom: 1px solid #1e293b; }
+    .tender-details .detail-subject { color: #cbd5e1; }
+    .hidden { display: none; }
+
+    .no-data { text-align: center; padding: 40px; color: #64748b; }
+
+    .progress-bar { width: 100%; height: 4px; background: #1e293b; border-radius: 2px; overflow: hidden; margin-top: 8px; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #0ea5e9, #38bdf8); border-radius: 2px; transition: width 0.3s; }
+
+    @media (max-width: 800px) {
+      .charts { grid-template-columns: 1fr; }
+      .controls { padding: 12px 16px; }
+      .main { padding: 12px; }
+      .header { padding: 16px; }
+      .header h1 { font-size: 20px; }
+
+      .cards { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .card { padding: 14px; }
+      .card .value { font-size: 22px; }
+
+      .chart-box { padding: 12px; }
+
+      .table-container { border-radius: 8px; }
+      .table-header { padding: 12px 14px; flex-wrap: wrap; gap: 6px; }
+      table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      th { padding: 8px 12px; font-size: 11px; white-space: nowrap; }
+      td { padding: 10px 12px; font-size: 13px; white-space: nowrap; }
+      .tender-details td { padding: 8px 12px 8px 32px; white-space: normal; }
+    }
+
+    @media (max-width: 480px) {
+      .cards { grid-template-columns: 1fr 1fr; gap: 8px; }
+      .card .value { font-size: 20px; }
+      .controls { flex-direction: column; align-items: stretch; }
+      .controls select { min-width: unset; width: 100%; }
+      .controls button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Tender <span>Dashboard</span></h1>
+    <p>Public procurement contract awards — EOJN data</p>
+  </div>
+
+  <div class="controls">
+    <label for="cityFilter">Buyer City</label>
+    <select id="cityFilter" style="padding:8px 12px;border:1px solid #475569;border-radius:6px;font-size:14px;background:#0f172a;color:#e2e8f0;outline:none;min-width:180px">
+      <option value="Zadar">Zadar</option>
+      <option value="">All cities</option>
+    </select>
+    <label for="dateFrom">From</label>
+    <input type="month" id="dateFrom" style="padding:8px 12px;border:1px solid #475569;border-radius:6px;font-size:14px;background:#0f172a;color:#e2e8f0;outline:none">
+    <label for="dateTo">To</label>
+    <input type="month" id="dateTo" style="padding:8px 12px;border:1px solid #475569;border-radius:6px;font-size:14px;background:#0f172a;color:#e2e8f0;outline:none">
+    <button id="searchBtn" onclick="search()">Search</button>
+  </div>
+
+  <div class="main">
+    <div id="status"></div>
+    <div id="dashboard" class="hidden">
+      <div class="cards" id="cards"></div>
+      <div class="charts">
+        <div class="chart-box">
+          <h3>Top 10 — By Number of Tenders Won</h3>
+          <canvas id="chartCount"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3>Top 10 — By Total Contract Value (EUR)</h3>
+          <canvas id="chartAmount"></canvas>
+        </div>
+      </div>
+      <div class="table-container">
+        <div class="table-header">
+          <h3>All Companies</h3>
+          <span id="tableInfo" style="font-size:12px;color:#64748b"></span>
+        </div>
+        <div style="max-height:600px;overflow-y:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Company</th>
+                <th>OIB</th>
+                <th class="text-right">Tenders Won</th>
+                <th class="text-right">Total Amount (EUR)</th>
+                <th class="text-right">Avg / Tender</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Firebase Configuration — replace with your project config
+    // Get from: Firebase Console > Project Settings > General > Your apps
+    const firebaseConfig = {
+      apiKey: "AIzaSyDLVDybNNGwPL8QQPZuSdr_nsQZ9EyJuAY",
+      authDomain: "eojn-visibility.firebaseapp.com",
+      projectId: "eojn-visibility",
+      storageBucket: "eojn-visibility.firebasestorage.app",
+      messagingSenderId: "592613302148",
+      appId: "1:592613302148:web:c703c14a75a1d1248787d1"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    let citiesLoaded = false;
+
+    async function loadCities() {
+      if (citiesLoaded) return;
+      try {
+        const metaSnap = await db.collection('metadata').doc('upload_log').get();
+        if (metaSnap.exists && metaSnap.data().cities) {
+          const select = document.getElementById('cityFilter');
+          const currentVal = select.value;
+          select.innerHTML = '<option value="">All cities</option>';
+          metaSnap.data().cities.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c;
+            opt.textContent = c;
+            select.appendChild(opt);
+          });
+          select.value = currentVal || 'Zadar';
+          citiesLoaded = true;
+        }
+      } catch (err) {
+        console.error('Failed to load cities:', err);
+      }
+    }
+
+    function parseDateRange(monthStr) {
+      if (!monthStr) return null;
+      const [y, m] = monthStr.split('-').map(Number);
+      return { year: y, month: m };
+    }
+
+    function dateInRange(dateStr, from, to) {
+      if (!dateStr) return true;
+      const d = dateStr.substring(0, 7); // 'YYYY-MM'
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    }
+
+    async function search() {
+      const city = document.getElementById('cityFilter').value;
+      const dateFrom = document.getElementById('dateFrom').value;
+      const dateTo = document.getElementById('dateTo').value;
+      const btn = document.getElementById('searchBtn');
+      const status = document.getElementById('status');
+      const dashboard = document.getElementById('dashboard');
+
+      let filterDesc = '';
+      if (city) filterDesc += ' for <strong>' + escapeHtml(city) + '</strong>';
+      if (dateFrom || dateTo) filterDesc += ' (' + (dateFrom || '...') + ' to ' + (dateTo || '...') + ')';
+
+      btn.disabled = true;
+      dashboard.classList.add('hidden');
+      status.innerHTML = `
+        <div>Fetching data${filterDesc || ' (all cities)'}...</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:30%"></div></div>
+      `;
+
+      try {
+        await loadCities();
+
+        // Query Firestore — filter by buyer (narucitelj) city
+        let q = db.collection('awards');
+        if (city) {
+          q = q.where('naruciteljCity', '==', city);
+        }
+
+        const snapshot = await q.get();
+        let awards = snapshot.docs.map(doc => doc.data());
+
+        // Client-side date filtering
+        if (dateFrom || dateTo) {
+          awards = awards.filter(a => dateInRange(a.datumObjave, dateFrom, dateTo));
+        }
+
+        // Get total count from metadata
+        let totalAwardsAll = awards.length;
+        if (city) {
+          const metaSnap = await db.collection('metadata').doc('upload_log').get();
+          if (metaSnap.exists) {
+            totalAwardsAll = metaSnap.data().totalAwards || awards.length;
+          }
+        }
+
+        status.innerHTML = '';
+
+        // Aggregate by company
+        const companyMap = {};
+        for (const award of awards) {
+          const key = award.companyOib || award.companyName;
+          if (!companyMap[key]) {
+            companyMap[key] = {
+              companyName: award.companyName,
+              companyOib: award.companyOib,
+              companyCity: award.companyCity,
+              tenderCount: 0,
+              totalAmount: 0,
+              tenders: []
+            };
+          }
+          companyMap[key].tenderCount++;
+          companyMap[key].totalAmount += award.amount;
+          if (award.companyCity && !companyMap[key].companyCity) {
+            companyMap[key].companyCity = award.companyCity;
+          }
+          companyMap[key].tenders.push({
+            narucitelj: award.narucitelj,
+            predmet: award.predmet,
+            amount: award.amount,
+            datumObjave: award.datumObjave,
+            datumSklapanja: award.datumSklapanja,
+            vrstaUgovora: award.vrstaUgovora,
+            urlObjave: award.urlObjave
+          });
+        }
+
+        const companies = Object.values(companyMap).sort((a, b) => b.totalAmount - a.totalAmount);
+
+        const periodLabel = (dateFrom || dateTo)
+          ? (dateFrom || '...') + ' — ' + (dateTo || '...')
+          : 'All time';
+
+        const data = {
+          period: periodLabel,
+          cityFilter: city || null,
+          totalAwardsAll,
+          totalAwards: awards.length,
+          totalAmount: awards.reduce((s, a) => s + a.amount, 0),
+          companies
+        };
+
+        if (companies.length === 0) {
+          dashboard.classList.remove('hidden');
+          renderCards(data);
+          document.getElementById('tableBody').innerHTML = '';
+          document.getElementById('tableInfo').textContent = '';
+          destroyCharts();
+          status.innerHTML = `<div class="no-data">No contract awards found${city ? ' for companies in ' + escapeHtml(city) : ''}.<br>
+            <span style="font-size:13px">Try a different city. Found ${totalAwardsAll} total awards across all cities.</span></div>`;
+          btn.disabled = false;
+          return;
+        }
+
+        dashboard.classList.remove('hidden');
+        renderCards(data);
+        renderCharts(data.companies);
+        renderTable(data.companies);
+        document.getElementById('tableInfo').textContent =
+          `${data.companies.length} companies | ${data.totalAwards} awards` +
+          (data.cityFilter ? ` | filtered from ${data.totalAwardsAll} total` : '');
+
+      } catch (err) {
+        status.innerHTML = `<span class="error">Error: ${escapeHtml(err.message)}</span>`;
+      }
+
+      btn.disabled = false;
+    }
+
+    function renderCards(data) {
+      const avgPerTender = data.totalAwards > 0 ? data.totalAmount / data.totalAwards : 0;
+      document.getElementById('cards').innerHTML = `
+        <div class="card">
+          <div class="label">Companies</div>
+          <div class="value accent">${data.companies.length}</div>
+          <div class="sub">${data.cityFilter ? 'in ' + escapeHtml(data.cityFilter) : 'all locations'}</div>
+        </div>
+        <div class="card">
+          <div class="label">Tenders Won</div>
+          <div class="value">${data.totalAwards}</div>
+          <div class="sub">${data.period}</div>
+        </div>
+        <div class="card">
+          <div class="label">Total Value</div>
+          <div class="value" style="font-size:22px">${formatAmount(data.totalAmount)}</div>
+          <div class="sub">EUR (with VAT)</div>
+        </div>
+        <div class="card">
+          <div class="label">Avg per Tender</div>
+          <div class="value" style="font-size:22px">${formatAmount(avgPerTender)}</div>
+          <div class="sub">EUR</div>
+        </div>
+      `;
+    }
+
+    let chartCountInstance = null;
+    let chartAmountInstance = null;
+
+    function destroyCharts() {
+      if (chartCountInstance) { chartCountInstance.destroy(); chartCountInstance = null; }
+      if (chartAmountInstance) { chartAmountInstance.destroy(); chartAmountInstance = null; }
+    }
+
+    function renderCharts(companies) {
+      destroyCharts();
+
+      const top10count = [...companies].sort((a, b) => b.tenderCount - a.tenderCount).slice(0, 10);
+      const top10amount = [...companies].sort((a, b) => b.totalAmount - a.totalAmount).slice(0, 10);
+
+      const shortenName = (name) => name.length > 25 ? name.substring(0, 22) + '...' : name;
+
+      const chartDefaults = {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
+          y: { ticks: { color: '#cbd5e1', font: { size: 11 } }, grid: { display: false } }
+        }
+      };
+
+      const ctxCount = document.getElementById('chartCount');
+      ctxCount.parentElement.style.height = '360px';
+      chartCountInstance = new Chart(ctxCount, {
+        type: 'bar',
+        data: {
+          labels: top10count.map(c => shortenName(c.companyName)),
+          datasets: [{
+            data: top10count.map(c => c.tenderCount),
+            backgroundColor: '#0ea5e9',
+            borderRadius: 4, barThickness: 22
+          }]
+        },
+        options: { ...chartDefaults, scales: { ...chartDefaults.scales, x: { ...chartDefaults.scales.x, title: { display: true, text: 'Tenders Won', color: '#64748b' } } } }
+      });
+
+      const ctxAmount = document.getElementById('chartAmount');
+      ctxAmount.parentElement.style.height = '360px';
+      chartAmountInstance = new Chart(ctxAmount, {
+        type: 'bar',
+        data: {
+          labels: top10amount.map(c => shortenName(c.companyName)),
+          datasets: [{
+            data: top10amount.map(c => c.totalAmount),
+            backgroundColor: '#34d399',
+            borderRadius: 4, barThickness: 22
+          }]
+        },
+        options: {
+          ...chartDefaults,
+          scales: {
+            ...chartDefaults.scales,
+            x: { ...chartDefaults.scales.x, title: { display: true, text: 'Total EUR', color: '#64748b' },
+              ticks: { color: '#64748b', callback: v => v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v }
+            }
+          }
+        }
+      });
+    }
+
+    function renderTable(companies) {
+      const tbody = document.getElementById('tableBody');
+      let html = '';
+      companies.forEach((c, i) => {
+        const avg = c.tenderCount > 0 ? c.totalAmount / c.tenderCount : 0;
+        const rowId = 'details-' + i;
+        html += `<tr>
+          <td class="rank">${i + 1}</td>
+          <td>
+            <div class="company-name">${escapeHtml(c.companyName)}</div>
+            ${c.companyCity ? '<div class="company-city">' + escapeHtml(c.companyCity) + '</div>' : ''}
+          </td>
+          <td style="color:#64748b;font-size:13px">${escapeHtml(c.companyOib || '-')}</td>
+          <td class="text-right count">${c.tenderCount}</td>
+          <td class="text-right amount">${formatAmount(c.totalAmount)}</td>
+          <td class="text-right" style="color:#94a3b8">${formatAmount(avg)}</td>
+          <td><button class="expand-btn" onclick="toggleDetails('${rowId}', this)">+</button></td>
+        </tr>`;
+        // Detail rows
+        if (c.tenders && c.tenders.length > 0) {
+          c.tenders.forEach(t => {
+            html += `<tr class="tender-details hidden ${rowId}">
+              <td></td>
+              <td colspan="4">
+                <div class="detail-subject">${escapeHtml(t.predmet || 'N/A')}</div>
+                <div style="margin-top:2px">
+                  <span>Buyer: ${escapeHtml(t.narucitelj)}</span>
+                  ${t.datumObjave ? ' &middot; <span>' + escapeHtml(t.datumObjave) + '</span>' : ''}
+                  ${t.vrstaUgovora ? ' &middot; <span>' + escapeHtml(translateContractType(t.vrstaUgovora)) + '</span>' : ''}
+                </div>
+              </td>
+              <td class="text-right amount">${formatAmount(t.amount)}</td>
+              <td>${t.urlObjave ? '<a href="' + escapeHtml(t.urlObjave) + '" target="_blank" rel="noopener" style="color:#38bdf8;font-size:12px">View</a>' : ''}</td>
+            </tr>`;
+          });
+        }
+      });
+      tbody.innerHTML = html;
+    }
+
+    function toggleDetails(rowId, btn) {
+      const rows = document.querySelectorAll('.' + rowId);
+      const showing = btn.textContent === '-';
+      rows.forEach(r => r.classList.toggle('hidden', showing));
+      btn.textContent = showing ? '+' : '-';
+    }
+
+    function translateContractType(v) {
+      const map = { 'IsporukaRoba': 'Goods', 'PruzanjeUsluga': 'Services', 'IzvodjenjeRadova': 'Works' };
+      return map[v] || v;
+    }
+
+    function formatAmount(n) {
+      return n.toLocaleString('hr-HR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Auto-search on load
+    search();
+  </script>
+</body>
+</html>

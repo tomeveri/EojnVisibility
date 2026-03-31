@@ -1,0 +1,13 @@
+{
+  "name": "eojn-tender-viewer",
+  "version": "1.0.0",
+  "description": "Simple viewer for Croatian public procurement tender winners",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "firebase-admin": "^12.0.0"
+  }
+}

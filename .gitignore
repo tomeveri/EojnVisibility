@@ -1,4 +1,6 @@
-source/
 documentation/
 temp_extract/
 firebase-debug.log
+node_modules/
+serviceAccountKey.json
+_tmp_extract/
